@@ -76,6 +76,13 @@ export default {
         userData.bank += depositAmount;
 
         await setEconomyData(client, guildId, userId, userData);
+        await addTransaction(
+    client,
+    guildId,
+    userId,
+    "withdraw",
+    withdrawAmount
+);
 
         const embed = successEmbed(
             "💰 Savings Updated",
