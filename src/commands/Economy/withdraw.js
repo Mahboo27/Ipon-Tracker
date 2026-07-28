@@ -1,13 +1,13 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
-import { getEconomyData, setEconomyData, getMaxBankCapacity } from '../../utils/economy.js';
+import { successEmbed } from '../../utils/embeds.js';
+import { getEconomyData, setEconomyData } from '../../utils/economy.js';
 import { withErrorHandling, createError, ErrorTypes } from '../../utils/errorHandler.js';
-
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+
 export default {
     data: new SlashCommandBuilder()
         .setName('withdraw')
-        .setDescription('Withdraw money from your bank to your wallet')
+        .setDescription('Withdraw money from your savings')
         .addIntegerOption(option =>
             option
                 .setName('amount')
@@ -17,69 +17,71 @@ export default {
         ),
 
     execute: withErrorHandling(async (interaction, config, client) => {
-        await InteractionHelper.safeDefer(interaction);
-            
-            const userId = interaction.user.id;
-            const guildId = interaction.guildId;
-            const amountInput = interaction.options.getInteger("amount");
+        const deferred = await InteractionHelper.safeDefer(interaction);
+        if (!deferred) return;
 
-            const userData = await getEconomyData(client, guildId, userId);
-            
-            if (!userData) {
-                throw createError(
-                    "Failed to load economy data",
-                    ErrorTypes.DATABASE,
-                    "Failed to load your economy data. Please try again later.",
-                    { userId, guildId }
-                );
+        const userId = interaction.user.id;
+        const guildId = interaction.guildId;
+        const amountInput = interaction.options.getInteger("amount");
+
+        const userData = await getEconomyData(client, guildId, userId);
+
+        if (!userData) {
+            throw createError(
+                "Failed to load savings data",
+                ErrorTypes.DATABASE,
+                "Unable to load your savings data. Please try again later."
+            );
+        }
+
+        let withdrawAmount = amountInput;
+
+        if (withdrawAmount <= 0) {
+            throw createError(
+                "Invalid amount",
+                ErrorTypes.VALIDATION,
+                "Please enter a valid amount greater than 0."
+            );
+        }
+
+        if (withdrawAmount > userData.bank) {
+            withdrawAmount = userData.bank;
+        }
+
+        if (withdrawAmount === 0) {
+            throw createError(
+                "No savings available",
+                ErrorTypes.VALIDATION,
+                "You don't have any savings to withdraw."
+            );
+        }
+
+        // Move money from Savings to Available Money
+        userData.wallet += withdrawAmount;
+        userData.bank -= withdrawAmount;
+
+        await setEconomyData(client, guildId, userId, userData);
+
+        const embed = successEmbed(
+            "💸 Withdrawal Successful",
+            `You withdrew **₱${withdrawAmount.toLocaleString()}** from your savings.`
+        )
+        .addFields(
+            {
+                name: "💵 Available Money",
+                value: `₱${userData.wallet.toLocaleString()}`,
+                inline: true,
+            },
+            {
+                name: "🏦 Remaining Savings",
+                value: `₱${userData.bank.toLocaleString()}`,
+                inline: true,
             }
+        );
 
-            let withdrawAmount = amountInput;
+        await InteractionHelper.safeEditReply(interaction, {
+            embeds: [embed]
+        });
 
-            if (withdrawAmount <= 0) {
-                throw createError(
-                    "Invalid withdrawal amount",
-                    ErrorTypes.VALIDATION,
-                    "You must withdraw a positive amount.",
-                    { amount: withdrawAmount, userId }
-                );
-            }
-
-            if (withdrawAmount > userData.bank) {
-                withdrawAmount = userData.bank;
-            }
-
-            if (withdrawAmount === 0) {
-                throw createError(
-                    "Empty bank account",
-                    ErrorTypes.VALIDATION,
-                    "Your bank account is empty.",
-                    { userId, bankBalance: userData.bank }
-                );
-            }
-
-            userData.wallet += withdrawAmount;
-            userData.bank -= withdrawAmount;
-
-            await setEconomyData(client, guildId, userId, userData);
-
-            const embed = successEmbed(
-                'Withdrawal Successful',
-                `You successfully withdrew **$${withdrawAmount.toLocaleString()}** from your bank.`
-            )
-                .addFields(
-                    {
-                        name: "New Cash Balance",
-                        value: `$${userData.wallet.toLocaleString()}`,
-                        inline: true,
-                    },
-                    {
-                        name: "New Bank Balance",
-                        value: `$${userData.bank.toLocaleString()}`,
-                        inline: true,
-                    },
-                );
-
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
-    }, { command: 'withdraw' })
+    }, { command: "withdraw" })
 };
