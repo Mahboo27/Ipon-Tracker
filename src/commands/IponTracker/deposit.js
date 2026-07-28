@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require("discord.js");
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName("deposit")
+        .setName("depositm")
         .setDescription("Deposit money into your savings")
         .addNumberOption(option =>
             option
